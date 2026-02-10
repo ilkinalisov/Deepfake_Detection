@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+venv/
+data/
+uploads/
+.claude/
+.DS_Store
+.env
+*.log
+.ipynb_checkpoints/
+CLAUDE.md

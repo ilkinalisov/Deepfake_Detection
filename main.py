@@ -1,13 +1,51 @@
+# main.py
+
 import os
-import glob
+import uuid
+from flask import Flask, request, render_template, jsonify
+from flask_cors import CORS
 import librosa
-import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, confusion_matrix
 import joblib
+from werkzeug.utils import secure_filename
+
+# Lazy-loaded models for text and video detection
+text_model = None
+text_tokenizer = None
+video_model = None
+device = None
+
+app = Flask(__name__)
+ALLOWED_AUDIO_EXTENSIONS = {"wav", "flac", "mp3"}
+ALLOWED_VIDEO_EXTENSIONS = {"mp4", "avi", "mov", "mkv"}
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "100"))
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/tmp/deepfake_uploads")
+
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+cors_origins = os.getenv("CORS_ORIGINS", "*").strip()
+if cors_origins == "*":
+    CORS(app, resources={r"/predict/*": {"origins": "*"}})
+else:
+    CORS(
+        app,
+        resources={
+            r"/predict/*": {
+                "origins": [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+            }
+        },
+    )
+
+
+def get_device():
+    """Check for Apple Silicon MPS, CUDA, or fallback to CPU"""
+    import torch
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    elif torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
 
 
 def extract_mfcc_features(audio_path, n_mfcc=30, n_fft=2048, hop_length=512):
@@ -26,159 +64,295 @@ def extract_mfcc_features(audio_path, n_mfcc=30, n_fft=2048, hop_length=512):
     return np.mean(features.T, axis=0)
 
 
-# for datasets that seperates the audio files into two folders (real, fake)
-def create_dataset(directory, label):
-    X, y = [], []
-    audio_files = []
-    audio_files.extend(glob.glob(os.path.join(directory, "*.wav")))
-    audio_files.extend(glob.glob(os.path.join(directory, "*.flac")))
-    audio_files.extend(glob.glob(os.path.join(directory, "*.mp3")))
-                  
-    for audio_path in audio_files:
-        mfcc_features = extract_mfcc_features(audio_path)
-        if mfcc_features is not None:
-            X.append(mfcc_features)
-            y.append(label)
-        else:
-            print(f"Skipping audio file {audio_path}")
-
-    print("Loaded", len(X), "samples from", directory)
-    return X, y
-
-
-# for release_in_the_wild or any dataset that uses meta.csv files for classification
-def create_dataset_from_metadata(metadata_path, base_audio_dir):
-    df = pd.read_csv(metadata_path)
-
-    X, y = [], []
-    for _, row in df.iterrows():
-        # Adapt these column names to match your real metadata file
-        filename = row["file"]          # e.g. 'obama_001.wav'
-        label_str = row["label"]        # e.g. 'bonafide' or 'spoof'
-
-        # Build full path to audio
-        audio_path = os.path.join(base_audio_dir, filename)
-
-        # Map string label to numeric (0 = real, 1 = fake)
-        if label_str.lower() in ["bonafide", "bona-fide", "real"]:
-            label = 0
-        else:  # spoof, fake, deepfake, etc.
-            label = 1
-
-        mfcc_features = extract_mfcc_features(audio_path)
-        if mfcc_features is not None:
-            X.append(mfcc_features)
-            y.append(label)
-        else:
-            print(f"Skipping audio file {audio_path}")
-
-    X = np.array(X)
-    y = np.array(y)
-    print("Total samples:", len(X))
-    return X, y
-
-
-def train_model(X, y):
-    unique_classes = np.unique(y)
-    print("Unique classes in y_train:", unique_classes)
-
-    if len(unique_classes) < 2:
-        raise ValueError("Atleast 2 set is required to train")
-
-    print("Size of X:", X.shape)
-    print("Size of y:", y.shape)
-
-    class_counts = np.bincount(y)
-    if np.min(class_counts) < 2:
-        print("Combining both classes into one for training")
-        X_train, y_train = X, y
-        X_test, y_test = None, None
-    else:
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-        print("Size of X_train:", X_train.shape)
-        print("Size of X_test:", X_test.shape)
-        print("Size of y_train:", y_train.shape)
-        print("Size of y_test:", y_test.shape)
-
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-
-    if X_test is not None:
-        X_test_scaled = scaler.transform(X_test)
-
-        svm_classifier = SVC(kernel='linear', class_weight='balanced', random_state=42)
-        svm_classifier.fit(X_train_scaled, y_train)
-
-        y_pred = svm_classifier.predict(X_test_scaled)
-
-        accuracy = accuracy_score(y_test, y_pred)
-        confusion_mtx = confusion_matrix(y_test, y_pred)
-
-        print("Accuracy:", accuracy)
-        print("Confusion Matrix:")
-        print(confusion_mtx)
-    else:
-        print("Insufficient samples for stratified splitting. Combine both classes into one for training.")
-        print("Train on all available data.")
-
-        svm_classifier = SVC(kernel='linear', random_state=42)
-        svm_classifier.fit(X_train_scaled, y_train)
-
-    # Save the trained SVM model and scaler
-    model_filename = "models/audio_svm.pkl"
-    scaler_filename = "models/audio_scaler.pkl"
-    os.makedirs("models", exist_ok=True)
-    joblib.dump(svm_classifier, model_filename)
-    joblib.dump(scaler, scaler_filename)
-
 def analyze_audio(input_audio_path):
+    """Analyze audio file for deepfake detection using SVM model."""
     model_filename = "models/audio_svm.pkl"
     scaler_filename = "models/audio_scaler.pkl"
-    svm_classifier = joblib.load(model_filename)
-    scaler = joblib.load(scaler_filename)
 
     if not os.path.exists(input_audio_path):
-        print("Error: The specified file does not exist.")
-        return
-    elif not (input_audio_path.lower().endswith(".wav") or input_audio_path.lower().endswith(".flac") or input_audio_path.lower().endswith(".mp3")):
-        print("Error: The specified file is not a .wav, .mp3 or a .flac file.")
-        return
+        return {"error": "The specified file does not exist."}
+
+    ext = input_audio_path.lower().rsplit(".", 1)[-1] if "." in input_audio_path else ""
+    if ext not in ALLOWED_AUDIO_EXTENSIONS:
+        return {"error": "Unsupported audio format. Use .wav, .flac, or .mp3"}
 
     mfcc_features = extract_mfcc_features(input_audio_path)
+    if mfcc_features is None:
+        return {"error": "Unable to process the input audio."}
 
-    if mfcc_features is not None:
-        mfcc_features_scaled = scaler.transform(mfcc_features.reshape(1, -1))
-        prediction = svm_classifier.predict(mfcc_features_scaled)
-        if prediction[0] == 0:
-            print("The input audio is classified as genuine.")
-        else:
-            print("The input audio is classified as deepfake.")
+    try:
+        scaler = joblib.load(scaler_filename)
+        svm_classifier = joblib.load(model_filename)
+    except FileNotFoundError:
+        return {"error": "Model files not found. Please train the model first."}
+
+    mfcc_features_scaled = scaler.transform(mfcc_features.reshape(1, -1))
+    prediction = svm_classifier.predict(mfcc_features_scaled)
+
+    # Get decision function for confidence
+    decision = svm_classifier.decision_function(mfcc_features_scaled)[0]
+    confidence = 1 / (1 + np.exp(-abs(decision)))  # Sigmoid to normalize
+
+    if prediction[0] == 0:
+        return {"result": "genuine", "confidence": float(confidence)}
     else:
-        print("Error: Unable to process the input audio.")
+        return {"result": "deepfake", "confidence": float(confidence)}
 
-def main():
 
-    # for datasets that seperates the audio files into two folders (real, fake)
-    genuine_dir = r"data/azvoices/real"
-    deepfake_dir = r"data/azvoices/fake"
- 
-    X_real, y_real = create_dataset(genuine_dir, label=0)
-    X_fake, y_fake = create_dataset(deepfake_dir, label=1)
+def load_text_model():
+    """Lazy load the text detection model."""
+    global text_model, text_tokenizer, device
+    if text_model is None:
+        import torch
+        from transformers import RobertaForSequenceClassification, RobertaTokenizer
 
-    X = np.array(X_real + X_fake)
-    y = np.array(y_real + y_fake)
+        device = get_device()
+        print(f"Text model loading on device: {device}")
 
-    # for release_in_the_wild or any dataset that uses meta.csv files for classification
-    # metadata_path = r"release_in_the_wild/metadata/meta.csv"
-    # base_audio_dir = r"release_in_the_wild/"
-    # X, y = create_dataset_from_metadata(metadata_path, base_audio_dir)
-    train_model(X, y)
+        model_name = "roberta-base-openai-detector"
+        text_tokenizer = RobertaTokenizer.from_pretrained(model_name)
+        text_model = RobertaForSequenceClassification.from_pretrained(model_name)
+        text_model.to(device)
+        text_model.eval()
+    return text_model, text_tokenizer
+
+
+def analyze_text(text):
+    """Analyze text for AI-generated content detection."""
+    try:
+        import torch
+    except Exception as e:
+        return {"error": f"Text dependencies unavailable: {str(e)}"}
+
+    if not text or len(text.strip()) < 10:
+        return {"error": "Text must be at least 10 characters long."}
+
+    try:
+        model, tokenizer = load_text_model()
+    except Exception as e:
+        return {"error": f"Failed to load text model: {str(e)}"}
+
+    inputs = tokenizer(
+        text,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512,
+        padding=True
+    )
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+        probabilities = torch.softmax(outputs.logits, dim=-1)
+
+    # Model outputs: index 0 = fake (AI), index 1 = real (human)
+    fake_prob = probabilities[0][0].item()
+    real_prob = probabilities[0][1].item()
+
+    if real_prob > fake_prob:
+        return {"result": "human", "confidence": float(real_prob)}
+    else:
+        return {"result": "ai_generated", "confidence": float(fake_prob)}
+
+
+def load_video_model():
+    """Lazy load the video detection model (MobileNetV2 for feature extraction)."""
+    global video_model, device
+    if video_model is None:
+        import torch
+        from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
+
+        device = get_device()
+        print(f"Video model loading on device: {device}")
+
+        video_model = mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1)
+        video_model.to(device)
+        video_model.eval()
+    return video_model
+
+
+def analyze_video(input_video_path, num_frames=16):
+    """
+    Analyze video for deepfake detection.
+    Note: This is a placeholder implementation - the model is not trained for deepfake detection.
+    """
+    try:
+        import torch
+        import cv2
+        from torchvision import transforms
+    except Exception as e:
+        return {"error": f"Video dependencies unavailable: {str(e)}"}
+
+    if not os.path.exists(input_video_path):
+        return {"error": "The specified file does not exist."}
+
+    ext = input_video_path.lower().rsplit(".", 1)[-1] if "." in input_video_path else ""
+    if ext not in ALLOWED_VIDEO_EXTENSIONS:
+        return {"error": "Unsupported video format. Use .mp4, .avi, .mov, or .mkv"}
+
+    try:
+        model = load_video_model()
+    except Exception as e:
+        return {"error": f"Failed to load video model: {str(e)}"}
+
+    # Open video and extract frames
+    cap = cv2.VideoCapture(input_video_path)
+    if not cap.isOpened():
+        return {"error": "Unable to open video file."}
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames == 0:
+        cap.release()
+        return {"error": "Video has no frames."}
+
+    # Sample frames evenly
+    frame_indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
+    frames = []
+
+    for idx in frame_indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ret, frame = cap.read()
+        if ret:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frames.append(frame)
+    cap.release()
+
+    if len(frames) == 0:
+        return {"error": "Could not extract frames from video."}
+
+    # Preprocess frames for MobileNetV2
+    preprocess = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+    processed_frames = torch.stack([preprocess(f) for f in frames]).to(device)
+
+    # Get features from model (placeholder: using ImageNet predictions)
+    with torch.no_grad():
+        outputs = model(processed_frames)
+        avg_output = torch.mean(outputs, dim=0)
+        probabilities = torch.softmax(avg_output, dim=0)
+        max_prob = torch.max(probabilities).item()
+
+    # Placeholder logic: This doesn't actually detect deepfakes
+    # In a real implementation, you would train a classifier on deepfake video features
+    # For now, return a mock result with a note
+    mock_confidence = 0.5 + (np.random.random() * 0.3)  # Random between 0.5-0.8
+    mock_result = "genuine" if np.random.random() > 0.5 else "deepfake"
+
+    return {
+        "result": mock_result,
+        "confidence": float(mock_confidence),
+        "note": "Placeholder: Video model not trained for deepfake detection"
+    }
+
+
+def allowed_audio_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_AUDIO_EXTENSIONS
+
+
+def allowed_video_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
+
+
+def save_uploaded_file(file_storage):
+    filename = secure_filename(file_storage.filename or "")
+    if "." not in filename:
+        return None
+    ext = filename.rsplit(".", 1)[1].lower()
+    if ext not in ALLOWED_AUDIO_EXTENSIONS and ext not in ALLOWED_VIDEO_EXTENSIONS:
+        return None
+
+    unique_name = f"{uuid.uuid4().hex}.{ext}"
+    file_path = os.path.join(UPLOAD_DIR, unique_name)
+    file_storage.save(file_path)
+    return file_path
+
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html")
+
+
+@app.route("/predict/audio", methods=["POST"])
+def predict_audio():
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    audio_file = request.files["file"]
+    if audio_file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
+    if not allowed_audio_file(audio_file.filename):
+        return jsonify({"error": "Invalid format. Use .wav, .flac, or .mp3"}), 400
+
+    audio_path = save_uploaded_file(audio_file)
+    if not audio_path:
+        return jsonify({"error": "Could not save uploaded audio file"}), 400
+
+    try:
+        result = analyze_audio(audio_path)
+    finally:
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+
+    if "error" in result:
+        return jsonify(result), 400
+
+    return jsonify(result)
+
+
+@app.route("/predict/text", methods=["POST"])
+def predict_text():
+    data = request.get_json()
+    if not data or "text" not in data:
+        return jsonify({"error": "No text provided"}), 400
+
+    text = data["text"]
+    result = analyze_text(text)
+
+    if "error" in result:
+        return jsonify(result), 400
+
+    return jsonify(result)
+
+
+@app.route("/predict/video", methods=["POST"])
+def predict_video():
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    video_file = request.files["file"]
+    if video_file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
+    if not allowed_video_file(video_file.filename):
+        return jsonify({"error": "Invalid format. Use .mp4, .avi, .mov, or .mkv"}), 400
+
+    video_path = save_uploaded_file(video_file)
+    if not video_path:
+        return jsonify({"error": "Could not save uploaded video file"}), 400
+
+    try:
+        result = analyze_video(video_path)
+    finally:
+        if os.path.exists(video_path):
+            os.remove(video_path)
+
+    if "error" in result:
+        return jsonify(result), 400
+
+    return jsonify(result)
 
 
 if __name__ == "__main__":
-    main()
-
-    user_input_file = input("Enter the path of the .wav file to analyze: ")
-    analyze_audio(user_input_file)
-
+    print(f"Starting Multi-Modal Deepfake Detector...")
+    app.run(
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "5000")),
+        debug=os.getenv("FLASK_DEBUG", "0") == "1",
+    )

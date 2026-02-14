@@ -1,0 +1,9 @@
+# Backend/runtime files not needed for static Vercel frontend
+*.py
+requirements.txt
+render.yaml
+main.py
+evaluate_models.py
+verify_accuracy.py
+models/
+templates/

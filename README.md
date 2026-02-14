@@ -34,19 +34,22 @@ To initialize the project, follow these steps:
    source venv/bin/activate
    ```
 
-3. Install the required dependencies
+3. Install the required dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
 
 ## How to Use Training the Model
 To train the SVM model with the provided data, follow these steps:
 
 1. Run the training script:
    ```
-   python main.py
+   python train_model.py
    ```
-   After sucessfully running the main script, it will initially ask you to provide the path of the voice to analyze, provide it with the path and the
+   After successfully running the training script, it will ask you for a voice file path to analyze.
 2. Run the web app by:
    ```
-   python app.py
+   python main.py
    ```
 
    The training script will extract MFCC features from the audio files, split the data into training and testing sets, scale the features, train the SVM model, and save the trained model and scaler for future use.
@@ -64,3 +67,44 @@ To classify an audio file as genuine or deepfake, follow these steps:
    Replace `path/to/your/audio/file.wav` with the path to the audio file you want to analyze. The script will extract MFCC features from the audio, scale the features using the saved scaler, pass the features to the trained SVM model, and display the classification result.
 
 
+## Deployment
+
+### Render (Flask backend + UI)
+
+This repo now includes `render.yaml` for one-click Render Blueprint deployment.
+
+1. Push this repository to GitHub.
+2. In Render, click **New +** -> **Blueprint** and select this repo.
+3. Render will detect `render.yaml` and create a Python web service.
+4. Deploy and open the generated URL.
+
+Default production start command is:
+```bash
+gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 180 main:app
+```
+
+Optional environment variables:
+- `CORS_ORIGINS`: comma-separated allowed frontend origins (default `*`).
+- `MAX_UPLOAD_SIZE_MB`: upload limit in MB (default `100`).
+- `UPLOAD_DIR`: temporary upload path (default `/tmp/deepfake_uploads`).
+
+### Vercel (Frontend only)
+
+This repo also includes:
+- `vercel.json`
+- root `index.html` (static frontend)
+- `config.js` (frontend API target)
+
+To deploy frontend on Vercel while using Render as backend:
+
+1. Set your Render backend URL in `config.js`:
+   ```js
+   window.APP_CONFIG = {
+     API_BASE_URL: "https://<your-render-service>.onrender.com"
+   };
+   ```
+2. Push changes.
+3. Import the repo into Vercel and deploy.
+4. In Render, set `CORS_ORIGINS` to your Vercel domain (or `*` while testing).
+
+If `API_BASE_URL` is empty, frontend calls same-origin endpoints (useful when running directly from Render).

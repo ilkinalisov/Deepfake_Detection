@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEEPFAKE DETECTOR // SYSTEM ONLINE</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="loading">
+    <!-- Theme Toggle -->
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+        <svg class="theme-toggle-icon icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+        </svg>
+        <svg class="theme-toggle-icon icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+        <div class="theme-toggle-track">
+            <div class="theme-toggle-thumb"></div>
+        </div>
+    </button>
+
+    <!-- Background Effects -->
+    <div class="grid-bg"></div>
+    <div class="scanline"></div>
+    <div class="crt-overlay"></div>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1 class="hero-title">Deepfake Detector</h1>
+        <div class="typewriter-container">
+            <span class="typewriter-text" id="typewriter"></span>
+            <span class="cursor" id="cursor"></span>
+        </div>
+    </section>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Tab Navigation -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="audio">
+                <span class="btn-text">Audio</span>
+            </button>
+            <button class="tab-btn" data-tab="text">
+                <span class="btn-text">Text</span>
+            </button>
+            <button class="tab-btn" data-tab="video">
+                <span class="btn-text">Video</span>
+            </button>
+        </div>
+
+        <!-- Main Panel -->
+        <div class="panel">
+            <!-- Audio Tab -->
+            <div id="audio" class="tab-content active">
+                <div class="upload-area" data-type="audio">
+                    <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                    </svg>
+                    <p class="upload-text">DRAG & DROP AUDIO FILE</p>
+                    <div class="upload-formats">
+                        <span class="format-label">Formats</span>
+                        <span class="format-chip">.WAV</span>
+                        <span class="format-chip">.FLAC</span>
+                        <span class="format-chip">.MP3</span>
+                    </div>
+                </div>
+                <input type="file" class="file-input" id="audio-input" accept=".wav,.flac,.mp3">
+                <div class="file-name" id="audio-file-name"></div>
+                <button class="btn" id="audio-btn" disabled>
+                    <span class="btn-text">ANALYZE</span>
+                </button>
+                <div class="scanner" id="audio-scanner">
+                    <p class="scanner-text">SCANNING AUDIO FREQUENCIES...</p>
+                    <div class="scanner-bar"></div>
+                </div>
+                <div class="result-terminal" id="audio-result">
+                    <div class="terminal-header">
+                        <div class="terminal-dots">
+                            <div class="terminal-dot active"></div>
+                            <div class="terminal-dot"></div>
+                            <div class="terminal-dot"></div>
+                        </div>
+                        <span class="terminal-title">analysis_output.log</span>
+                    </div>
+                    <div class="terminal-body" id="audio-result-body"></div>
+                </div>
+                <div class="error-display" id="audio-error"></div>
+            </div>
+
+            <!-- Text Tab -->
+            <div id="text" class="tab-content">
+                <textarea class="text-input-area" id="text-input" placeholder="Enter text to analyze for AI generation..."></textarea>
+                <div class="input-info">
+                    <span class="format-label">Detects</span>
+                    <span class="format-chip">ChatGPT</span>
+                    <span class="format-chip">GPT-4</span>
+                    <span class="format-chip">AI Writers</span>
+                    <span class="info-divider"></span>
+                    <span class="format-chip info-chip">Min 10 chars</span>
+                </div>
+                <button class="btn" id="text-btn" disabled>
+                    <span class="btn-text">ANALYZE</span>
+                </button>
+                <div class="scanner" id="text-scanner">
+                    <p class="scanner-text">ANALYZING LINGUISTIC PATTERNS...</p>
+                    <div class="scanner-bar"></div>
+                </div>
+                <div class="result-terminal" id="text-result">
+                    <div class="terminal-header">
+                        <div class="terminal-dots">
+                            <div class="terminal-dot active"></div>
+                            <div class="terminal-dot"></div>
+                            <div class="terminal-dot"></div>
+                        </div>
+                        <span class="terminal-title">analysis_output.log</span>
+                    </div>
+                    <div class="terminal-body" id="text-result-body"></div>
+                </div>
+                <div class="error-display" id="text-error"></div>
+            </div>
+
+            <!-- Video Tab -->
+            <div id="video" class="tab-content">
+                <div class="upload-area" data-type="video">
+                    <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <p class="upload-text">DRAG & DROP VIDEO FILE</p>
+                    <div class="upload-formats">
+                        <span class="format-label">Formats</span>
+                        <span class="format-chip">.MP4</span>
+                        <span class="format-chip">.AVI</span>
+                        <span class="format-chip">.MOV</span>
+                        <span class="format-chip">.MKV</span>
+                    </div>
+                </div>
+                <input type="file" class="file-input" id="video-input" accept=".mp4,.avi,.mov,.mkv">
+                <div class="file-name" id="video-file-name"></div>
+                <button class="btn" id="video-btn" disabled>
+                    <span class="btn-text">ANALYZE</span>
+                </button>
+                <div class="scanner" id="video-scanner">
+                    <p class="scanner-text">PROCESSING VIDEO FRAMES...</p>
+                    <div class="scanner-bar"></div>
+                </div>
+                <div class="result-terminal" id="video-result">
+                    <div class="terminal-header">
+                        <div class="terminal-dots">
+                            <div class="terminal-dot active"></div>
+                            <div class="terminal-dot"></div>
+                            <div class="terminal-dot"></div>
+                        </div>
+                        <span class="terminal-title">analysis_output.log</span>
+                    </div>
+                    <div class="terminal-body" id="video-result-body"></div>
+                </div>
+                <div class="error-display" id="video-error"></div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p class="footer-text">System v2.0 | Multi-Modal Detection Active</p>
+        </footer>
+    </div>
+
+    <script src="/config.js"></script>
+    <script>
+        // ═══════════════════════════════════════════════════════════════
+        // INITIALIZATION
+        // ═══════════════════════════════════════════════════════════════
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize theme from localStorage
+            initTheme();
+
+            // Remove loading class after flicker animation
+            setTimeout(() => {
+                document.body.classList.remove('loading');
+            }, 500);
+
+            // Start typewriter effect
+            startTypewriter();
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // THEME TOGGLE
+        // ═══════════════════════════════════════════════════════════════
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+
+        document.getElementById('theme-toggle').addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // TYPEWRITER EFFECT
+        // ═══════════════════════════════════════════════════════════════
+
+        function startTypewriter() {
+            const text = "Ready for the truth?";
+            const typewriterEl = document.getElementById('typewriter');
+            const cursorEl = document.getElementById('cursor');
+            let index = 0;
+
+            function type() {
+                if (index < text.length) {
+                    typewriterEl.textContent += text.charAt(index);
+                    index++;
+                    setTimeout(type, 80);
+                } else {
+                    // Typing complete - hide cursor and add glow pulse
+                    setTimeout(() => {
+                        cursorEl.classList.add('hidden');
+                        typewriterEl.classList.add('glow-pulse');
+                    }, 500);
+                }
+            }
+
+            // Start typing after a short delay
+            setTimeout(type, 800);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // TAB SWITCHING
+        // ═══════════════════════════════════════════════════════════════
+
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Update active tab button
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // Update active content
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(btn.dataset.tab).classList.add('active');
+            });
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // FILE UPLOAD HANDLING
+        // ═══════════════════════════════════════════════════════════════
+
+        const fileState = { audio: null, video: null };
+
+        document.querySelectorAll('.upload-area').forEach(area => {
+            const type = area.dataset.type;
+            const input = document.getElementById(`${type}-input`);
+            const fileName = document.getElementById(`${type}-file-name`);
+            const btn = document.getElementById(`${type}-btn`);
+
+            // Click to upload
+            area.addEventListener('click', () => input.click());
+
+            // Drag events
+            area.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                area.classList.add('dragover');
+            });
+
+            area.addEventListener('dragleave', () => {
+                area.classList.remove('dragover');
+            });
+
+            area.addEventListener('drop', (e) => {
+                e.preventDefault();
+                area.classList.remove('dragover');
+                if (e.dataTransfer.files.length) {
+                    handleFile(type, e.dataTransfer.files[0]);
+                }
+            });
+
+            // File input change
+            input.addEventListener('change', () => {
+                if (input.files.length) {
+                    handleFile(type, input.files[0]);
+                }
+            });
+        });
+
+        function handleFile(type, file) {
+            fileState[type] = file;
+            const fileName = document.getElementById(`${type}-file-name`);
+            const btn = document.getElementById(`${type}-btn`);
+
+            fileName.textContent = file.name.toUpperCase();
+            fileName.classList.add('show');
+            btn.disabled = false;
+
+            // Hide previous results
+            hideResults(type);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // TEXT INPUT HANDLING
+        // ═══════════════════════════════════════════════════════════════
+
+        const textInput = document.getElementById('text-input');
+        const textBtn = document.getElementById('text-btn');
+
+        textInput.addEventListener('input', () => {
+            textBtn.disabled = textInput.value.trim().length < 10;
+            hideResults('text');
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // ANALYSIS HANDLERS
+        // ═══════════════════════════════════════════════════════════════
+
+        document.getElementById('audio-btn').addEventListener('click', () => analyzeFile('audio'));
+        document.getElementById('text-btn').addEventListener('click', () => analyzeText());
+        document.getElementById('video-btn').addEventListener('click', () => analyzeFile('video'));
+
+        function buildApiUrl(path) {
+            const configuredBase = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) || '';
+            const normalizedBase = configuredBase.replace(/\/+$/, '');
+            return normalizedBase ? `${normalizedBase}${path}` : path;
+        }
+
+        async function analyzeFile(type) {
+            const file = fileState[type];
+            if (!file) return;
+
+            showScanner(type);
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch(buildApiUrl(`/predict/${type}`), {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                hideScanner(type);
+
+                if (response.ok) {
+                    showResult(type, data);
+                } else {
+                    showError(type, data.error || 'ANALYSIS FAILED');
+                }
+            } catch (err) {
+                hideScanner(type);
+                showError(type, 'NETWORK ERROR // CONNECTION LOST');
+            }
+        }
+
+        async function analyzeText() {
+            const text = textInput.value.trim();
+            if (text.length < 10) return;
+
+            showScanner('text');
+
+            try {
+                const response = await fetch(buildApiUrl('/predict/text'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                const data = await response.json();
+
+                hideScanner('text');
+
+                if (response.ok) {
+                    showResult('text', data);
+                } else {
+                    showError('text', data.error || 'ANALYSIS FAILED');
+                }
+            } catch (err) {
+                hideScanner('text');
+                showError('text', 'NETWORK ERROR // CONNECTION LOST');
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // UI STATE MANAGEMENT
+        // ═══════════════════════════════════════════════════════════════
+
+        function showScanner(type) {
+            document.getElementById(`${type}-btn`).disabled = true;
+            document.getElementById(`${type}-scanner`).classList.add('show');
+            hideResults(type);
+        }
+
+        function hideScanner(type) {
+            document.getElementById(`${type}-scanner`).classList.remove('show');
+            document.getElementById(`${type}-btn`).disabled = false;
+        }
+
+        function hideResults(type) {
+            document.getElementById(`${type}-result`).classList.remove('show');
+            document.getElementById(`${type}-error`).classList.remove('show');
+        }
+
+        function showResult(type, data) {
+            const resultDiv = document.getElementById(`${type}-result`);
+            const bodyDiv = document.getElementById(`${type}-result-body`);
+
+            // Determine result styling
+            const isGenuine = data.result === 'genuine' || data.result === 'human';
+            const resultClass = isGenuine ? 'result-genuine' : 'result-fake';
+
+            // Build result labels
+            const labels = {
+                'genuine': 'GENUINE // AUTHENTIC',
+                'deepfake': 'DEEPFAKE // SYNTHETIC',
+                'human': 'HUMAN // ORGANIC',
+                'ai_generated': 'AI GENERATED // SYNTHETIC'
+            };
+
+            const resultLabel = labels[data.result] || data.result.toUpperCase();
+            const confidence = (data.confidence * 100).toFixed(1);
+
+            // Build terminal output
+            let html = `
+                <div class="terminal-line">ANALYSIS COMPLETE</div>
+                <div class="terminal-line">CLASSIFICATION: <span class="result-label ${resultClass}">${resultLabel}</span></div>
+                <div class="terminal-line">CONFIDENCE: <span class="result-confidence">${confidence}%</span></div>
+            `;
+
+            if (data.note) {
+                html += `<div class="terminal-line"><span class="result-note">NOTE: ${data.note.toUpperCase()}</span></div>`;
+            }
+
+            bodyDiv.innerHTML = html;
+            resultDiv.classList.add('show');
+        }
+
+        function showError(type, message) {
+            const errorDiv = document.getElementById(`${type}-error`);
+            errorDiv.textContent = message.toUpperCase();
+            errorDiv.classList.add('show');
+        }
+    </script>
+</body>
+</html>
